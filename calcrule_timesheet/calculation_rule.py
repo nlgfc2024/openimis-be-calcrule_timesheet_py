@@ -19,7 +19,7 @@ class TimesheetCalculationRule(AbsStrategy):
     date_valid_to = None
     status = "active"
     from_to = FROM_TO
-    type = "timesheet"
+    type = "social_protection"
     sub_type = "benefit_plan"
     CLASS_NAME_CHECK = ['PaymentPlan']
 
@@ -72,7 +72,7 @@ class TimesheetCalculationRule(AbsStrategy):
 
     @classmethod
     def calculate(cls, payment_plan, **kwargs):
-        TimesheetStrategyStorage.choose_strategy(payment_plan).calculate(cls, payment_plan, **kwargs)
+        return TimesheetStrategyStorage.choose_strategy(payment_plan).calculate(cls, payment_plan, **kwargs)
 
     @classmethod
     def convert(cls, payment_plan, **kwargs):

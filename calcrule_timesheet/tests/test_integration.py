@@ -1,9 +1,10 @@
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
-
+from django.contrib.contenttypes.models import ContentType
+from contribution_plan.services import PaymentPlan as PaymentPlanService
 from contribution_plan.models import PaymentPlan
 from core.test_helpers import LogInHelper
-from social_protection.models import Beneficiary, GroupBeneficiary, BeneficiaryStatus
+from social_protection.models import Beneficiary, GroupBeneficiary, BeneficiaryStatus, ProjectStatus
 from social_protection.services import BeneficiaryService, GroupBeneficiaryService
 from social_protection.tests.test_helpers import (
     create_benefit_plan,
@@ -42,7 +43,8 @@ class TimesheetCalculationIntegrationTest(TestCase):
         cls.project_individual = create_project(
             'Integration Test Individual Project',
             cls.benefit_plan_individual,
-            cls.user.username
+            cls.user.username,
+            status=ProjectStatus.COMPLETED
         )
 
         cls.benefit_plan_group = create_benefit_plan(
@@ -52,7 +54,8 @@ class TimesheetCalculationIntegrationTest(TestCase):
         cls.project_group = create_project(
             'Integration Test Group Project',
             cls.benefit_plan_group,
-            cls.user.username
+            cls.user.username,
+            status=ProjectStatus.COMPLETED
         )
 
     def create_individual_beneficiary_with_project(self, individual):
@@ -130,17 +133,30 @@ class TimesheetCalculationIntegrationTest(TestCase):
             }
         )
 
-        payment_plan = Mock(spec=PaymentPlan)
-        payment_plan.benefit_plan = self.benefit_plan_individual
-        payment_plan.json_ext = payment_plan_data['json_ext']
-        payment_plan.calculation = self.calculation_rule.uuid
+        payment_plan_service = PaymentPlanService(self.user)
+        payment_plan_payload = {
+            'code': 'PP-INTG-IND-001',
+            'name': 'Integration Test Individual Payment Plan',
+            'calculation': str(self.calculation_rule.uuid),
+            'benefit_plan_id': str(self.benefit_plan_individual.id),
+            'benefit_plan_type': ContentType.objects.get_for_model(self.benefit_plan_individual),
+            'periodicity': 12,
+            'json_ext': payment_plan_data['json_ext']
+        }
+        result_pp = payment_plan_service.create(payment_plan_payload)
+        self.assertTrue(result_pp.get('success', False))
+        payment_plan = PaymentPlan.objects.get(id=result_pp['data']['uuid'])
+
+        payment_cycle = Mock()
+        payment_cycle.start_date = '2023-01-01'
+        payment_cycle.end_date = '2023-12-31'
 
         payroll = Mock(id=789)
         kwargs = {
             'user_id': self.user.id,
             'start_date': '2023-01-01',
             'end_date': '2023-12-31',
-            'payment_cycle': 'monthly',
+            'payment_cycle': payment_cycle,
             'payroll': payroll,
         }
 
@@ -202,17 +218,30 @@ class TimesheetCalculationIntegrationTest(TestCase):
             }
         )
 
-        payment_plan = Mock(spec=PaymentPlan)
-        payment_plan.benefit_plan = self.benefit_plan_group
-        payment_plan.json_ext = payment_plan_data['json_ext']
-        payment_plan.calculation = self.calculation_rule.uuid
+        payment_plan_service = PaymentPlanService(self.user)
+        payment_plan_payload = {
+            'code': 'PP-INTG-GRP-001',
+            'name': 'Integration Test Group Payment Plan',
+            'calculation': str(self.calculation_rule.uuid),
+            'benefit_plan_id': str(self.benefit_plan_group.id),
+            'benefit_plan_type': ContentType.objects.get_for_model(self.benefit_plan_group),
+            'periodicity': 12,
+            'json_ext': payment_plan_data['json_ext']
+        }
+        result_pp = payment_plan_service.create(payment_plan_payload)
+        self.assertTrue(result_pp.get('success', False))
+        payment_plan = PaymentPlan.objects.get(id=result_pp['data']['uuid'])
+
+        payment_cycle = Mock()
+        payment_cycle.start_date = '2023-01-01'
+        payment_cycle.end_date = '2023-12-31'
 
         payroll = Mock(id=890)
         kwargs = {
             'user_id': self.user.id,
             'start_date': '2023-01-01',
             'end_date': '2023-12-31',
-            'payment_cycle': 'monthly',
+            'payment_cycle': payment_cycle,
             'payroll': payroll,
         }
 
@@ -260,17 +289,30 @@ class TimesheetCalculationIntegrationTest(TestCase):
             }
         )
 
-        payment_plan = Mock(spec=PaymentPlan)
-        payment_plan.benefit_plan = self.benefit_plan_individual
-        payment_plan.json_ext = payment_plan_data['json_ext']
-        payment_plan.calculation = self.calculation_rule.uuid
+        payment_plan_service = PaymentPlanService(self.user)
+        payment_plan_payload = {
+            'code': 'PP-INTG-LIM-001',
+            'name': 'Integration Test Limit Payment Plan',
+            'calculation': str(self.calculation_rule.uuid),
+            'benefit_plan_id': str(self.benefit_plan_individual.id),
+            'benefit_plan_type': ContentType.objects.get_for_model(self.benefit_plan_individual),
+            'periodicity': 12,
+            'json_ext': payment_plan_data['json_ext']
+        }
+        result_pp = payment_plan_service.create(payment_plan_payload)
+        self.assertTrue(result_pp.get('success', False))
+        payment_plan = PaymentPlan.objects.get(id=result_pp['data']['uuid'])
+
+        payment_cycle = Mock()
+        payment_cycle.start_date = '2023-01-01'
+        payment_cycle.end_date = '2023-12-31'
 
         payroll = Mock(id=999)
         kwargs = {
             'user_id': self.user.id,
             'start_date': '2023-01-01',
             'end_date': '2023-12-31',
-            'payment_cycle': 'monthly',
+            'payment_cycle': payment_cycle,
             'payroll': payroll,
         }
 
@@ -341,17 +383,30 @@ class TimesheetCalculationIntegrationTest(TestCase):
             }
         )
 
-        payment_plan = Mock(spec=PaymentPlan)
-        payment_plan.benefit_plan = self.benefit_plan_individual
-        payment_plan.json_ext = payment_plan_data['json_ext']
-        payment_plan.calculation = self.calculation_rule.uuid
+        payment_plan_service = PaymentPlanService(self.user)
+        payment_plan_payload = {
+            'code': 'PP-INTG-MULTI-001',
+            'name': 'Integration Test Multi Payment Plan',
+            'calculation': str(self.calculation_rule.uuid),
+            'benefit_plan_id': str(self.benefit_plan_individual.id),
+            'benefit_plan_type': ContentType.objects.get_for_model(self.benefit_plan_individual),
+            'periodicity': 12,
+            'json_ext': payment_plan_data['json_ext']
+        }
+        result_pp = payment_plan_service.create(payment_plan_payload)
+        self.assertTrue(result_pp.get('success', False))
+        payment_plan = PaymentPlan.objects.get(id=result_pp['data']['uuid'])
+
+        payment_cycle = Mock()
+        payment_cycle.start_date = '2023-01-01'
+        payment_cycle.end_date = '2023-12-31'
 
         payroll = Mock(id=777)
         kwargs = {
             'user_id': self.user.id,
             'start_date': '2023-01-01',
             'end_date': '2023-12-31',
-            'payment_cycle': 'monthly',
+            'payment_cycle': payment_cycle,
             'payroll': payroll,
         }
 

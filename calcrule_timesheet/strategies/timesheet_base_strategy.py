@@ -45,8 +45,6 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         if payment_plan_parameters['calculation_rule']['limit_per_single_transaction'] != "":
             limit = float(payment_plan_parameters['calculation_rule']['limit_per_single_transaction'])
 
-        print('===================> payment_plan_parameters', payment_plan_parameters)
-
         for beneficiary in beneficiaries:
             calculated_payment = cls._calculate_timesheet_payment(
                 beneficiary, base_day_rate, limit

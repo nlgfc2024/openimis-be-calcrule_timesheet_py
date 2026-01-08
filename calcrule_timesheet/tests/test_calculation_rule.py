@@ -1,7 +1,8 @@
 from decimal import Decimal
 from unittest.mock import Mock, patch, MagicMock
 from django.test import TestCase
-
+from django.contrib.contenttypes.models import ContentType
+from contribution_plan.services import PaymentPlan as PaymentPlanService
 from contribution_plan.models import PaymentPlan
 from core.test_helpers import LogInHelper
 from social_protection.models import BenefitPlan, Beneficiary, GroupBeneficiary, BeneficiaryStatus
@@ -46,7 +47,7 @@ class TimesheetCalculationRuleTest(TestCase):
     def test_calculation_rule_metadata(self):
         """Test that the calculation rule has correct metadata"""
         self.assertEqual(self.calculation_rule.calculation_rule_name, "Calculation rule: timesheet")
-        self.assertEqual(self.calculation_rule.type, "timesheet")
+        self.assertEqual(self.calculation_rule.type, "social_protection")
         self.assertEqual(self.calculation_rule.sub_type, "benefit_plan")
         self.assertEqual(self.calculation_rule.status, "active")
         self.assertIsNotNone(self.calculation_rule.uuid)
@@ -264,9 +265,10 @@ class IndividualTimesheetStrategyTest(TestCase):
         self.assertEqual(IndividualTimesheetStrategy.BENEFICIARY_TYPE, "beneficiary")
         self.assertEqual(IndividualTimesheetStrategy.BENEFICIARY_OBJECT, Beneficiary)
 
+    @patch('calcrule_timesheet.strategies.timesheet_base_strategy.PayrollService')
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BillService')
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BenefitConsumptionService')
-    def test_individual_strategy_convert(self, mock_benefit_service, mock_bill_service):
+    def test_individual_strategy_convert(self, mock_benefit_service, mock_bill_service, mock_payroll_service):
         """Test individual strategy conversion to bill and benefit"""
         beneficiary = self.create_beneficiary_with_project()
 
@@ -287,14 +289,29 @@ class IndividualTimesheetStrategyTest(TestCase):
         }
         mock_benefit_service.return_value = mock_benefit_instance
 
-        payment_plan = Mock(spec=PaymentPlan)
-        payment_plan.benefit_plan = self.benefit_plan
+        payment_plan_service = PaymentPlanService(self.user)
+        payment_plan_payload = {
+            'code': 'PP-TEST-001',
+            'name': 'Test Payment Plan',
+            'calculation': '00000000-0000-0000-0000-000000000000',
+            'benefit_plan_id': str(self.benefit_plan.id),
+            'benefit_plan_type': ContentType.objects.get_for_model(self.benefit_plan),
+            'periodicity': 12
+        }
+        result = payment_plan_service.create(payment_plan_payload)
+        self.assertTrue(result.get('success', False))
+        payment_plan = PaymentPlan.objects.get(id=result['data']['uuid'])
+
+        payment_cycle = Mock()
+        payment_cycle.start_date = '2023-01-01'
+        payment_cycle.end_date = '2023-12-31'
+
         kwargs = {
             'beneficiary': beneficiary,
             'amount': 75.0,
             'user': self.user,
             'end_date': '2023-12-31',
-            'payment_cycle': 'monthly',
+            'payment_cycle': payment_cycle,
             'payroll': Mock(id=789),
         }
 
@@ -378,7 +395,7 @@ class TimesheetLimitAndTaskTest(TestCase):
         cls.user = LogInHelper().get_or_create_user_api()
         cls.benefit_plan = create_benefit_plan(
             cls.user.username,
-            payload_override={'code': 'ILIMIT001', 'type': "INDIVIDUAL"}
+            payload_override={'code': 'LIMIT001', 'type': "INDIVIDUAL"}
         )
         cls.project = create_project(
             'Limit Test Project',
