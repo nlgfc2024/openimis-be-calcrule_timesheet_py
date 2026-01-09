@@ -21,6 +21,7 @@ class TimesheetCalculationRule(AbsStrategy):
     from_to = FROM_TO
     type = "social_protection"
     sub_type = "benefit_plan"
+    supports_advanced_criteria = False
     CLASS_NAME_CHECK = ['PaymentPlan']
 
 
