@@ -23,9 +23,7 @@ from calcrule_timesheet.strategies import (
 )
 from calcrule_timesheet.tests.data import (
     payment_plan_timesheet_individual,
-    payment_plan_timesheet_individual_with_limit,
     payment_plan_timesheet_group,
-    payment_plan_timesheet_group_with_limit,
 )
 from calcrule_timesheet.tests.test_helpers import (
     create_time_entry,
@@ -130,13 +128,12 @@ class BaseTimesheetStrategyTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         expected = calculate_expected_payment(entries_data, base_day_rate)
         self.assertEqual(payment, expected)
         self.assertEqual(payment, 150.0)
-        self.assertFalse(BaseTimesheetStrategy.is_exceed_limit)
 
     def test_calculate_timesheet_payment_partial_days(self):
         """Test calculation with partial completion percentages"""
@@ -152,7 +149,7 @@ class BaseTimesheetStrategyTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         expected = calculate_expected_payment(entries_data, base_day_rate)
@@ -165,49 +162,10 @@ class BaseTimesheetStrategyTest(TestCase):
         base_day_rate = 50.0
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 0.0)
-
-    def test_calculate_timesheet_payment_with_limit_not_exceeded(self):
-        """Test calculation with limit that is not exceeded"""
-        beneficiary = self.create_beneficiary_with_project()
-        base_day_rate = 50.0
-        limit = 200.0
-
-        entries_data = [
-            {'day_number': 1, 'percent_complete': 100},
-            {'day_number': 2, 'percent_complete': 100},
-        ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, limit
-        )
-
-        self.assertEqual(payment, 100.0)
-        self.assertFalse(BaseTimesheetStrategy.is_exceed_limit)
-
-    def test_calculate_timesheet_payment_with_limit_exceeded(self):
-        """Test calculation with limit that is exceeded"""
-        beneficiary = self.create_beneficiary_with_project()
-        base_day_rate = 50.0
-        limit = 100.0
-
-        entries_data = [
-            {'day_number': 1, 'percent_complete': 100},
-            {'day_number': 2, 'percent_complete': 100},
-            {'day_number': 3, 'percent_complete': 100},
-        ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, limit
-        )
-
-        self.assertEqual(payment, 150.0)
-        self.assertTrue(BaseTimesheetStrategy.is_exceed_limit)
 
     def test_calculate_timesheet_payment_edge_case_zero_rate(self):
         """Test calculation with zero base day rate"""
@@ -221,7 +179,7 @@ class BaseTimesheetStrategyTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 0.0)
@@ -378,90 +336,9 @@ class GroupTimesheetStrategyTest(TestCase):
         )
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            group_beneficiary, base_day_rate, None
+            group_beneficiary, base_day_rate
         )
 
         expected = calculate_expected_payment(entries_data, base_day_rate)
         self.assertEqual(payment, expected)
         self.assertEqual(payment, 240.0)
-
-
-class TimesheetLimitAndTaskTest(TestCase):
-    """Test limit checking and task creation functionality"""
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.user = LogInHelper().get_or_create_user_api()
-        cls.benefit_plan = create_benefit_plan(
-            cls.user.username,
-            payload_override={'code': 'LIMIT001', 'type': "INDIVIDUAL"}
-        )
-        cls.project = create_project(
-            'Limit Test Project',
-            cls.benefit_plan,
-            cls.user.username
-        )
-        cls.individual = create_individual(cls.user.username)
-        cls.beneficiary_service = BeneficiaryService(cls.user)
-
-    def create_beneficiary_with_project(self):
-        """Helper to create a beneficiary enrolled in the project"""
-        beneficiary_payload = {
-            "individual_id": self.individual.id,
-            "benefit_plan_id": self.benefit_plan.id,
-            "status": BeneficiaryStatus.ACTIVE,
-            "project_id": self.project.id,
-        }
-        result = self.beneficiary_service.create(beneficiary_payload)
-        self.assertTrue(result.get('success', False))
-        uuid = result.get('data', {}).get('uuid')
-        return Beneficiary.objects.get(uuid=uuid)
-
-    @patch('calcrule_timesheet.strategies.timesheet_base_strategy.TaskService')
-    def test_create_task_after_exceeding_limit(self, mock_task_service):
-        """Test that task is created when payment exceeds limit"""
-        beneficiary = self.create_beneficiary_with_project()
-
-        convert_results = {
-            'bill_data': {'code': 'TEST-001'},
-            'user': self.user
-        }
-        convert_results_benefit = {'benefit_data': {}}
-        payroll = Mock(id=999)
-
-        BaseTimesheetStrategy.create_task_after_exceeding_limit(
-            convert_results=convert_results,
-            convert_results_benefit=convert_results_benefit,
-            payroll=payroll
-        )
-
-        mock_task_service.assert_called_once()
-        mock_task_instance = mock_task_service.return_value
-        mock_task_instance.create.assert_called_once()
-
-    def test_limit_checking_logic(self):
-        """Test that is_exceed_limit flag is set correctly"""
-        beneficiary = self.create_beneficiary_with_project()
-
-        entries_data = [
-            {'day_number': 1, 'percent_complete': 100},
-            {'day_number': 2, 'percent_complete': 100},
-            {'day_number': 3, 'percent_complete': 100},
-        ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, 50.0, 100.0
-        )
-        self.assertTrue(BaseTimesheetStrategy.is_exceed_limit)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, 50.0, 200.0
-        )
-        self.assertFalse(BaseTimesheetStrategy.is_exceed_limit)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, 50.0, None
-        )
-        self.assertFalse(BaseTimesheetStrategy.is_exceed_limit)

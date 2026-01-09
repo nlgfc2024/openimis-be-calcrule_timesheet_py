@@ -63,7 +63,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 0.0)
@@ -82,7 +82,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 100.0)
@@ -99,7 +99,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 15000.0)
@@ -116,7 +116,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertAlmostEqual(payment, 0.02, places=2)
@@ -135,47 +135,11 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         expected = (25 + 33 + 66 + 99)
         self.assertEqual(payment, expected)
-
-    def test_limit_exactly_at_payment_amount(self):
-        """Test when limit exactly equals calculated payment"""
-        beneficiary = self.create_beneficiary_with_project()
-        base_day_rate = 50.0
-
-        entries_data = [
-            {'day_number': 1, 'percent_complete': 100},
-            {'day_number': 2, 'percent_complete': 100},
-        ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, 100.0
-        )
-
-        self.assertEqual(payment, 100.0)
-        self.assertFalse(BaseTimesheetStrategy.is_exceed_limit)
-
-    def test_limit_one_unit_below_payment(self):
-        """Test when limit is just below payment amount"""
-        beneficiary = self.create_beneficiary_with_project()
-        base_day_rate = 50.0
-
-        entries_data = [
-            {'day_number': 1, 'percent_complete': 100},
-            {'day_number': 2, 'percent_complete': 100},
-        ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
-
-        payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, 99.99
-        )
-
-        self.assertEqual(payment, 100.0)
-        self.assertTrue(BaseTimesheetStrategy.is_exceed_limit)
 
     def test_single_time_entry(self):
         """Test calculation with only one time entry"""
@@ -185,7 +149,7 @@ class TimesheetEdgeCaseTest(TestCase):
         time_entry = create_time_entry(beneficiary, 1, 100, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 50.0)
@@ -202,7 +166,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 4500.0)
@@ -232,7 +196,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         expected = (0.33 * 33.33) + (0.67 * 33.33)
@@ -253,7 +217,7 @@ class TimesheetEdgeCaseTest(TestCase):
         base_day_rate = 50.0
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 0.0)
@@ -272,7 +236,7 @@ class TimesheetEdgeCaseTest(TestCase):
         create_multiple_time_entries(beneficiary, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate, None
+            beneficiary, base_day_rate
         )
 
         self.assertEqual(payment, 200.0)

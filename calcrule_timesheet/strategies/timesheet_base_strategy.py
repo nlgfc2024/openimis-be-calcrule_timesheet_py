@@ -9,9 +9,6 @@ from invoice.models import Bill
 from invoice.services import BillService
 from social_protection.models import BeneficiaryStatus, ProjectStatus
 from payroll.services import BenefitConsumptionService, PayrollService
-from tasks_management.apps import TasksManagementConfig
-from tasks_management.models import Task
-from tasks_management.services import TaskService
 
 from calcrule_timesheet.strategies.timesheet_strategy_interface import TimesheetStrategyInterface
 
@@ -20,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class BaseTimesheetStrategy(TimesheetStrategyInterface):
-    is_exceed_limit = False
 
     @classmethod
     def check_calculation(cls, calculation, payment_plan):
@@ -43,13 +39,10 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         user = User.objects.filter(id=user_id).first()
 
         base_day_rate = float(payment_plan_parameters['calculation_rule']['base_day_rate'])
-        limit = None
-        if payment_plan_parameters['calculation_rule']['limit_per_single_transaction'] != "":
-            limit = float(payment_plan_parameters['calculation_rule']['limit_per_single_transaction'])
 
         for beneficiary in beneficiaries:
             calculated_payment = cls._calculate_timesheet_payment(
-                beneficiary, base_day_rate, limit
+                beneficiary, base_day_rate
             )
 
             additional_params = {
@@ -67,18 +60,13 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         return "Calculation and transformation into bills completed successfully."
 
     @classmethod
-    def _calculate_timesheet_payment(cls, beneficiary, base_day_rate, limit):
+    def _calculate_timesheet_payment(cls, beneficiary, base_day_rate):
         time_entries = beneficiary.project_time_entries.all()
 
         total_payment = sum(
             (entry.percent_complete / 100.0) * base_day_rate
             for entry in time_entries
         )
-
-        if limit:
-            cls.is_exceed_limit = True if total_payment > limit else False
-        else:
-            cls.is_exceed_limit = False
 
         return total_payment
 
@@ -100,19 +88,12 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
             converter_benefit, payment_plan, entity, amount, payment_cycle
         )
         user = convert_results['user']
-        if not cls.is_exceed_limit:
-            cls.create_and_save_business_entities(
-                convert_results,
-                convert_results_benefit,
-                payroll.id,
-                user
-            )
-        else:
-            cls.create_task_after_exceeding_limit(
-                convert_results=convert_results,
-                convert_results_benefit=convert_results_benefit,
-                payroll=payroll
-            )
+        cls.create_and_save_business_entities(
+            convert_results,
+            convert_results_benefit,
+            payroll.id,
+            user
+        )
 
     @classmethod
     def create_and_save_business_entities(
@@ -159,21 +140,3 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
             'benefit_data': benefit,
             'type_conversion': 'beneficiary - benefit'
         }
-
-    @classmethod
-    @transaction.atomic
-    @register_service_signal('calcrule_timesheet.create_task')
-    def create_task_after_exceeding_limit(cls, convert_results, convert_results_benefit, payroll):
-        business_status = {"code": convert_results['bill_data']['code']}
-        user = convert_results.pop('user')
-        convert_results['benefit'] = convert_results_benefit
-        convert_results['payroll_id'] = f"{payroll.id}"
-        TaskService(user).create({
-            'source': 'calcrule_timesheet',
-            'entity': payroll,
-            'status': Task.Status.RECEIVED,
-            'executor_action_event': TasksManagementConfig.default_executor_event,
-            'business_event': CalcruleTimesheetConfig.calculate_business_event,
-            'business_status': business_status,
-            'data': f"{convert_results}"
-        })

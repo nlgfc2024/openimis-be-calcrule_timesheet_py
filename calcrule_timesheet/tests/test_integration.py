@@ -22,7 +22,6 @@ from calcrule_timesheet.tests.test_helpers import (
 )
 from calcrule_timesheet.tests.data import (
     payment_plan_timesheet_individual,
-    payment_plan_timesheet_individual_with_limit,
     payment_plan_timesheet_group,
 )
 
@@ -126,8 +125,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
                 'calculation': self.calculation_rule.uuid,
                 'json_ext': {
                     'calculation_rule': {
-                        'base_day_rate': str(base_day_rate),
-                        'limit_per_single_transaction': ''
+                        'base_day_rate': str(base_day_rate)
                     }
                 }
             }
@@ -211,8 +209,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
                 'calculation': self.calculation_rule.uuid,
                 'json_ext': {
                     'calculation_rule': {
-                        'base_day_rate': str(base_day_rate),
-                        'limit_per_single_transaction': ''
+                        'base_day_rate': str(base_day_rate)
                     }
                 }
             }
@@ -249,78 +246,6 @@ class TimesheetCalculationIntegrationTest(TestCase):
 
         self.assertEqual(result, "Calculation and transformation into bills completed successfully.")
         mock_bill_service.bill_create.assert_called()
-
-    @patch('calcrule_timesheet.strategies.timesheet_base_strategy.TaskService')
-    @patch('calcrule_timesheet.strategies.timesheet_base_strategy.PayrollService')
-    @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BenefitConsumptionService')
-    @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BillService')
-    def test_end_to_end_with_limit_exceeded(
-        self, mock_bill_service, mock_benefit_service, mock_payroll_service, mock_task_service
-    ):
-        """Test complete flow when payment exceeds limit and creates task"""
-        individual = create_individual(self.user.username, payload_override={'first_name': 'LimitTest1'})
-        beneficiary = self.create_individual_beneficiary_with_project(individual)
-
-        entries_data = [
-            {'day_number': 1, 'percent_complete': 100},
-            {'day_number': 2, 'percent_complete': 100},
-            {'day_number': 3, 'percent_complete': 100},
-            {'day_number': 4, 'percent_complete': 100},
-            {'day_number': 5, 'percent_complete': 100},
-        ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
-
-        base_day_rate = 50.0
-        limit = 150.0
-        expected_payment = calculate_expected_payment(entries_data, base_day_rate)
-        self.assertGreater(expected_payment, limit)
-
-        payment_plan_data = merge_dicts(
-            payment_plan_timesheet_individual_with_limit,
-            {
-                'benefit_plan_id': self.benefit_plan_individual.id,
-                'calculation': self.calculation_rule.uuid,
-                'json_ext': {
-                    'calculation_rule': {
-                        'base_day_rate': str(base_day_rate),
-                        'limit_per_single_transaction': str(limit)
-                    }
-                }
-            }
-        )
-
-        payment_plan_service = PaymentPlanService(self.user)
-        payment_plan_payload = {
-            'code': 'PP-INTG-LIM-001',
-            'name': 'Integration Test Limit Payment Plan',
-            'calculation': str(self.calculation_rule.uuid),
-            'benefit_plan_id': str(self.benefit_plan_individual.id),
-            'benefit_plan_type': ContentType.objects.get_for_model(self.benefit_plan_individual),
-            'periodicity': 12,
-            'json_ext': payment_plan_data['json_ext']
-        }
-        result_pp = payment_plan_service.create(payment_plan_payload)
-        self.assertTrue(result_pp.get('success', False))
-        payment_plan = PaymentPlan.objects.get(id=result_pp['data']['uuid'])
-
-        payment_cycle = Mock()
-        payment_cycle.start_date = '2023-01-01'
-        payment_cycle.end_date = '2023-12-31'
-
-        payroll = Mock(id=999)
-        kwargs = {
-            'user_id': self.user.id,
-            'start_date': '2023-01-01',
-            'end_date': '2023-12-31',
-            'payment_cycle': payment_cycle,
-            'payroll': payroll,
-        }
-
-        result = self.calculation_rule.calculate(payment_plan, **kwargs)
-
-        self.assertEqual(result, "Calculation and transformation into bills completed successfully.")
-        mock_task_service.assert_called()
-        mock_bill_service.bill_create.assert_not_called()
 
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.PayrollService')
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BenefitConsumptionService')
@@ -376,8 +301,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
                 'calculation': self.calculation_rule.uuid,
                 'json_ext': {
                     'calculation_rule': {
-                        'base_day_rate': str(base_day_rate),
-                        'limit_per_single_transaction': ''
+                        'base_day_rate': str(base_day_rate)
                     }
                 }
             }
