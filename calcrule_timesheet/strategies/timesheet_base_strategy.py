@@ -7,7 +7,7 @@ from core.models import User
 from core.signals import register_service_signal
 from invoice.models import Bill
 from invoice.services import BillService
-from social_protection.models import BeneficiaryStatus
+from social_protection.models import BeneficiaryStatus, ProjectStatus
 from payroll.services import BenefitConsumptionService, PayrollService
 from tasks_management.apps import TasksManagementConfig
 from tasks_management.models import Task
@@ -32,7 +32,9 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         beneficiaries = kwargs.get('beneficiaries_queryset', None)
         if not beneficiaries:
             beneficiaries = cls.BENEFICIARY_OBJECT.objects.filter(
-                benefit_plan=payment_plan.benefit_plan, status=BeneficiaryStatus.ACTIVE
+                benefit_plan=payment_plan.benefit_plan,
+                status=BeneficiaryStatus.ACTIVE,
+                project__status=ProjectStatus.COMPLETED,
             )
 
         payment_plan_parameters = payment_plan.json_ext
