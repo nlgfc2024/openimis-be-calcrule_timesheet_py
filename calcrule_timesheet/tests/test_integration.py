@@ -16,6 +16,7 @@ from social_protection.tests.test_helpers import (
 
 from calcrule_timesheet.calculation_rule import TimesheetCalculationRule
 from calcrule_timesheet.tests.test_helpers import (
+    create_enrollment,
     create_multiple_time_entries,
     calculate_expected_payment,
     merge_dicts,
@@ -57,33 +58,35 @@ class TimesheetCalculationIntegrationTest(TestCase):
             status=ProjectStatus.COMPLETED
         )
 
-    def create_individual_beneficiary_with_project(self, individual):
-        """Helper to create individual beneficiary with project"""
+    def create_individual_beneficiary_with_enrollment(self, individual):
+        """Helper to create individual beneficiary with enrollment"""
         service = BeneficiaryService(self.user)
         beneficiary_payload = {
             "individual_id": individual.id,
             "benefit_plan_id": self.benefit_plan_individual.id,
             "status": BeneficiaryStatus.ACTIVE,
-            "project_id": self.project_individual.id,
         }
         result = service.create(beneficiary_payload)
-        self.assertTrue(result.get('success', False))
+        self.assertTrue(result.get('success', False), result.get('detail', 'No details'))
         uuid = result.get('data', {}).get('uuid')
-        return Beneficiary.objects.get(uuid=uuid)
+        beneficiary = Beneficiary.objects.get(uuid=uuid)
+        enrollment = create_enrollment(beneficiary, self.project_individual, self.user)
+        return enrollment
 
-    def create_group_beneficiary_with_project(self, group):
-        """Helper to create group beneficiary with project"""
+    def create_group_beneficiary_with_enrollment(self, group):
+        """Helper to create group beneficiary with enrollment"""
         service = GroupBeneficiaryService(self.user)
         group_beneficiary_payload = {
             "group_id": group.id,
             "benefit_plan_id": self.benefit_plan_group.id,
             "status": BeneficiaryStatus.ACTIVE,
-            "project_id": self.project_group.id,
         }
         result = service.create(group_beneficiary_payload)
-        self.assertTrue(result.get('success', False))
+        self.assertTrue(result.get('success', False), result.get('detail', 'No details'))
         uuid = result.get('data', {}).get('uuid')
-        return GroupBeneficiary.objects.get(uuid=uuid)
+        group_beneficiary = GroupBeneficiary.objects.get(uuid=uuid)
+        enrollment = create_enrollment(group_beneficiary, self.project_group, self.user, is_group=True)
+        return enrollment
 
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.PayrollService')
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BenefitConsumptionService')
@@ -93,7 +96,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
     ):
         """Test complete calculation flow for individual beneficiary"""
         individual = create_individual(self.user.username, payload_override={'first_name': 'IntgTest1'})
-        beneficiary = self.create_individual_beneficiary_with_project(individual)
+        enrollment = self.create_individual_beneficiary_with_enrollment(individual)
 
         entries_data = [
             {'day_number': 1, 'percent_complete': 100},
@@ -102,7 +105,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
             {'day_number': 4, 'percent_complete': 100},
             {'day_number': 5, 'percent_complete': 80},
         ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
+        create_multiple_time_entries(enrollment, entries_data, self.user.username)
 
         base_day_rate = 50.0
         expected_payment = calculate_expected_payment(entries_data, base_day_rate)
@@ -174,7 +177,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
         group = create_group(self.user.username, payload_override={'code': 'GRPINTG1'})
         add_individual_to_group(self.user.username, individual, group)
 
-        group_beneficiary = self.create_group_beneficiary_with_project(group)
+        enrollment = self.create_group_beneficiary_with_enrollment(group)
 
         entries_data = [
             {'day_number': 1, 'percent_complete': 100},
@@ -182,7 +185,7 @@ class TimesheetCalculationIntegrationTest(TestCase):
             {'day_number': 3, 'percent_complete': 90},
         ]
         create_multiple_time_entries(
-            group_beneficiary,
+            enrollment,
             entries_data,
             self.user.username,
             is_group=True
@@ -258,12 +261,12 @@ class TimesheetCalculationIntegrationTest(TestCase):
             create_individual(self.user.username, payload_override={'first_name': f'Multi{i}'})
             for i in range(3)
         ]
-        beneficiaries = [
-            self.create_individual_beneficiary_with_project(individual)
+        enrollments = [
+            self.create_individual_beneficiary_with_enrollment(individual)
             for individual in individuals
         ]
 
-        entries_per_beneficiary = [
+        entries_per_enrollment = [
             [
                 {'day_number': 1, 'percent_complete': 100},
                 {'day_number': 2, 'percent_complete': 50},
@@ -278,8 +281,8 @@ class TimesheetCalculationIntegrationTest(TestCase):
             ],
         ]
 
-        for beneficiary, entries_data in zip(beneficiaries, entries_per_beneficiary):
-            create_multiple_time_entries(beneficiary, entries_data, self.user.username)
+        for enrollment, entries_data in zip(enrollments, entries_per_enrollment):
+            create_multiple_time_entries(enrollment, entries_data, self.user.username)
 
         base_day_rate = 50.0
 

@@ -1,5 +1,10 @@
 import copy
-from social_protection.models import BeneficiaryProjectTimeEntry, GroupBeneficiaryProjectTimeEntry
+from social_protection.models import (
+    BeneficiaryProjectTimeEntry,
+    GroupBeneficiaryProjectTimeEntry,
+    BeneficiaryProjectEnrollment,
+    GroupBeneficiaryProjectEnrollment,
+)
 
 
 def merge_dicts(original, override):
@@ -12,26 +17,54 @@ def merge_dicts(original, override):
     return updated
 
 
-def create_time_entry(beneficiary, day_number, percent_complete, username, is_group=False):
+def create_enrollment(beneficiary, project, user, is_group=False):
     """
-    Create a ProjectTimeEntry for a beneficiary (individual or group)
+    Create a project enrollment for a beneficiary (individual or group)
 
     Args:
         beneficiary: Beneficiary or GroupBeneficiary instance
+        project: Project instance
+        user: User instance for audit trail
+        is_group: True if beneficiary is GroupBeneficiary, False for Beneficiary
+
+    Returns:
+        The created enrollment instance
+    """
+    if is_group:
+        enrollment = GroupBeneficiaryProjectEnrollment(
+            group_beneficiary=beneficiary,
+            project=project
+        )
+    else:
+        enrollment = BeneficiaryProjectEnrollment(
+            beneficiary=beneficiary,
+            project=project
+        )
+
+    enrollment.save(user=user)
+    return enrollment
+
+
+def create_time_entry(enrollment, day_number, percent_complete, username, is_group=False):
+    """
+    Create a ProjectTimeEntry for an enrollment (individual or group)
+
+    Args:
+        enrollment: BeneficiaryProjectEnrollment or GroupBeneficiaryProjectEnrollment instance
         day_number: Day number (1 to project.working_days)
         percent_complete: Percentage completed (0-100)
         username: Username for audit trail
-        is_group: True if beneficiary is GroupBeneficiary, False for Beneficiary
+        is_group: True if group enrollment, False for individual enrollment
     """
     if is_group:
         time_entry = GroupBeneficiaryProjectTimeEntry(
-            group_beneficiary=beneficiary,
+            enrollment=enrollment,
             day_number=day_number,
             percent_complete=percent_complete
         )
     else:
         time_entry = BeneficiaryProjectTimeEntry(
-            beneficiary=beneficiary,
+            enrollment=enrollment,
             day_number=day_number,
             percent_complete=percent_complete
         )
@@ -40,15 +73,15 @@ def create_time_entry(beneficiary, day_number, percent_complete, username, is_gr
     return time_entry
 
 
-def create_multiple_time_entries(beneficiary, entries_data, username, is_group=False):
+def create_multiple_time_entries(enrollment, entries_data, username, is_group=False):
     """
-    Create multiple time entries for a beneficiary
+    Create multiple time entries for an enrollment
 
     Args:
-        beneficiary: Beneficiary or GroupBeneficiary instance
+        enrollment: BeneficiaryProjectEnrollment or GroupBeneficiaryProjectEnrollment instance
         entries_data: List of dicts with 'day_number' and 'percent_complete' keys
         username: Username for audit trail
-        is_group: True if beneficiary is GroupBeneficiary, False for Beneficiary
+        is_group: True if group enrollment, False for individual enrollment
 
     Returns:
         List of created time entries
@@ -56,7 +89,7 @@ def create_multiple_time_entries(beneficiary, entries_data, username, is_group=F
     time_entries = []
     for entry_data in entries_data:
         time_entry = create_time_entry(
-            beneficiary,
+            enrollment,
             entry_data['day_number'],
             entry_data['percent_complete'],
             username,

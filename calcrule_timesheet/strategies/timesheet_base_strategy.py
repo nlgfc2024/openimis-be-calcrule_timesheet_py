@@ -25,13 +25,13 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
     @classmethod
     def calculate(cls, calculation, payment_plan, **kwargs):
         payroll = kwargs.get('payroll', None)
-        beneficiaries = kwargs.get('beneficiaries_queryset', None)
-        if not beneficiaries:
-            beneficiaries = cls.BENEFICIARY_OBJECT.objects.filter(
-                benefit_plan=payment_plan.benefit_plan,
-                status=BeneficiaryStatus.ACTIVE,
+        enrollments = kwargs.get('enrollments_queryset', None)
+        if not enrollments:
+            enrollments = cls.ENROLLMENT_OBJECT.objects.filter(
+                project__benefit_plan=payment_plan.benefit_plan,
                 project__status=ProjectStatus.COMPLETED,
-            )
+                is_deleted=False,
+            ).select_related('project', cls.BENEFICIARY_FIELD)
 
         payment_plan_parameters = payment_plan.json_ext
         user_id, start_date, end_date, payment_cycle = \
@@ -40,13 +40,15 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
 
         base_day_rate = float(payment_plan_parameters['calculation_rule']['base_day_rate'])
 
-        for beneficiary in beneficiaries:
+        for enrollment in enrollments:
             calculated_payment = cls._calculate_timesheet_payment(
-                beneficiary, base_day_rate
+                enrollment, base_day_rate
             )
 
+            beneficiary = getattr(enrollment, cls.BENEFICIARY_FIELD)
             additional_params = {
                 f"{cls.BENEFICIARY_TYPE}": beneficiary,
+                "enrollment": enrollment,
                 "amount": calculated_payment,
                 "user": user,
                 "end_date": end_date,
@@ -60,8 +62,8 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         return "Calculation and transformation into bills completed successfully."
 
     @classmethod
-    def _calculate_timesheet_payment(cls, beneficiary, base_day_rate):
-        time_entries = beneficiary.project_time_entries.all()
+    def _calculate_timesheet_payment(cls, enrollment, base_day_rate):
+        time_entries = enrollment.time_entries.filter(is_deleted=False)
 
         total_payment = sum(
             (entry.percent_complete / 100.0) * base_day_rate

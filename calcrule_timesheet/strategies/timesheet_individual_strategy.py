@@ -1,4 +1,4 @@
-from social_protection.models import Beneficiary
+from social_protection.models import Beneficiary, BeneficiaryProjectEnrollment
 from calcrule_timesheet.converters import (
     BeneficiaryToBillConverter,
     BeneficiaryToBillItemConverter,
@@ -10,7 +10,9 @@ from calcrule_timesheet.strategies.timesheet_base_strategy import BaseTimesheetS
 class IndividualTimesheetStrategy(BaseTimesheetStrategy):
     TYPE = "INDIVIDUAL"
     BENEFICIARY_OBJECT = Beneficiary
+    ENROLLMENT_OBJECT = BeneficiaryProjectEnrollment
     BENEFICIARY_TYPE = "beneficiary"
+    BENEFICIARY_FIELD = "beneficiary"
 
     @classmethod
     def convert(cls, payment_plan, **kwargs):

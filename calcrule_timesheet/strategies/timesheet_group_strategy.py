@@ -1,4 +1,4 @@
-from social_protection.models import GroupBeneficiary
+from social_protection.models import GroupBeneficiary, GroupBeneficiaryProjectEnrollment
 
 from calcrule_timesheet.converters import (
     GroupToBillConverter,
@@ -11,7 +11,9 @@ from calcrule_timesheet.strategies.timesheet_base_strategy import BaseTimesheetS
 class GroupTimesheetStrategy(BaseTimesheetStrategy):
     TYPE = "GROUP"
     BENEFICIARY_OBJECT = GroupBeneficiary
+    ENROLLMENT_OBJECT = GroupBeneficiaryProjectEnrollment
     BENEFICIARY_TYPE = "group"
+    BENEFICIARY_FIELD = "group_beneficiary"
 
     @classmethod
     def convert(cls, payment_plan, **kwargs):

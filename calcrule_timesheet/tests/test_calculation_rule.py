@@ -5,7 +5,10 @@ from django.contrib.contenttypes.models import ContentType
 from contribution_plan.services import PaymentPlan as PaymentPlanService
 from contribution_plan.models import PaymentPlan
 from core.test_helpers import LogInHelper
-from social_protection.models import BenefitPlan, Beneficiary, GroupBeneficiary, BeneficiaryStatus
+from social_protection.models import (
+    BenefitPlan, Beneficiary, GroupBeneficiary, BeneficiaryStatus,
+    BeneficiaryProjectEnrollment, GroupBeneficiaryProjectEnrollment,
+)
 from social_protection.services import BeneficiaryService, GroupBeneficiaryService
 from social_protection.tests.test_helpers import (
     create_benefit_plan,
@@ -26,6 +29,7 @@ from calcrule_timesheet.tests.data import (
     payment_plan_timesheet_group,
 )
 from calcrule_timesheet.tests.test_helpers import (
+    create_enrollment,
     create_time_entry,
     create_multiple_time_entries,
     calculate_expected_payment,
@@ -102,22 +106,23 @@ class BaseTimesheetStrategyTest(TestCase):
         cls.individual = create_individual(cls.user.username)
         cls.beneficiary_service = BeneficiaryService(cls.user)
 
-    def create_beneficiary_with_project(self):
+    def create_beneficiary_with_enrollment(self):
         """Helper to create a beneficiary enrolled in the project"""
         beneficiary_payload = {
             "individual_id": self.individual.id,
             "benefit_plan_id": self.benefit_plan_individual.id,
             "status": BeneficiaryStatus.ACTIVE,
-            "project_id": self.project.id,
         }
         result = self.beneficiary_service.create(beneficiary_payload)
-        self.assertTrue(result.get('success', False))
+        self.assertTrue(result.get('success', False), result.get('detail', 'No details'))
         uuid = result.get('data', {}).get('uuid')
-        return Beneficiary.objects.get(uuid=uuid)
+        beneficiary = Beneficiary.objects.get(uuid=uuid)
+        enrollment = create_enrollment(beneficiary, self.project, self.user)
+        return enrollment
 
     def test_calculate_timesheet_payment_full_days(self):
         """Test calculation with 100% completion for multiple days"""
-        beneficiary = self.create_beneficiary_with_project()
+        enrollment = self.create_beneficiary_with_enrollment()
         base_day_rate = 50.0
 
         entries_data = [
@@ -125,10 +130,10 @@ class BaseTimesheetStrategyTest(TestCase):
             {'day_number': 2, 'percent_complete': 100},
             {'day_number': 3, 'percent_complete': 100},
         ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
+        create_multiple_time_entries(enrollment, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate
+            enrollment, base_day_rate
         )
 
         expected = calculate_expected_payment(entries_data, base_day_rate)
@@ -137,7 +142,7 @@ class BaseTimesheetStrategyTest(TestCase):
 
     def test_calculate_timesheet_payment_partial_days(self):
         """Test calculation with partial completion percentages"""
-        beneficiary = self.create_beneficiary_with_project()
+        enrollment = self.create_beneficiary_with_enrollment()
         base_day_rate = 50.0
 
         entries_data = [
@@ -146,10 +151,10 @@ class BaseTimesheetStrategyTest(TestCase):
             {'day_number': 3, 'percent_complete': 75},
             {'day_number': 4, 'percent_complete': 0},
         ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
+        create_multiple_time_entries(enrollment, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate
+            enrollment, base_day_rate
         )
 
         expected = calculate_expected_payment(entries_data, base_day_rate)
@@ -158,28 +163,28 @@ class BaseTimesheetStrategyTest(TestCase):
 
     def test_calculate_timesheet_payment_no_entries(self):
         """Test calculation with no time entries returns zero"""
-        beneficiary = self.create_beneficiary_with_project()
+        enrollment = self.create_beneficiary_with_enrollment()
         base_day_rate = 50.0
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate
+            enrollment, base_day_rate
         )
 
         self.assertEqual(payment, 0.0)
 
     def test_calculate_timesheet_payment_edge_case_zero_rate(self):
         """Test calculation with zero base day rate"""
-        beneficiary = self.create_beneficiary_with_project()
+        enrollment = self.create_beneficiary_with_enrollment()
         base_day_rate = 0.0
 
         entries_data = [
             {'day_number': 1, 'percent_complete': 100},
             {'day_number': 2, 'percent_complete': 100},
         ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
+        create_multiple_time_entries(enrollment, entries_data, self.user.username)
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            beneficiary, base_day_rate
+            enrollment, base_day_rate
         )
 
         self.assertEqual(payment, 0.0)
@@ -204,37 +209,40 @@ class IndividualTimesheetStrategyTest(TestCase):
         cls.individual = create_individual(cls.user.username)
         cls.beneficiary_service = BeneficiaryService(cls.user)
 
-    def create_beneficiary_with_project(self):
+    def create_beneficiary_with_enrollment(self):
         """Helper to create a beneficiary enrolled in the project"""
         beneficiary_payload = {
             "individual_id": self.individual.id,
             "benefit_plan_id": self.benefit_plan.id,
             "status": BeneficiaryStatus.ACTIVE,
-            "project_id": self.project.id,
         }
         result = self.beneficiary_service.create(beneficiary_payload)
-        self.assertTrue(result.get('success', False))
+        self.assertTrue(result.get('success', False), result.get('detail', 'No details'))
         uuid = result.get('data', {}).get('uuid')
-        return Beneficiary.objects.get(uuid=uuid)
+        beneficiary = Beneficiary.objects.get(uuid=uuid)
+        enrollment = create_enrollment(beneficiary, self.project, self.user)
+        return beneficiary, enrollment
 
     def test_individual_strategy_type(self):
         """Test that strategy has correct type"""
         self.assertEqual(IndividualTimesheetStrategy.TYPE, "INDIVIDUAL")
         self.assertEqual(IndividualTimesheetStrategy.BENEFICIARY_TYPE, "beneficiary")
         self.assertEqual(IndividualTimesheetStrategy.BENEFICIARY_OBJECT, Beneficiary)
+        self.assertEqual(IndividualTimesheetStrategy.ENROLLMENT_OBJECT, BeneficiaryProjectEnrollment)
+        self.assertEqual(IndividualTimesheetStrategy.BENEFICIARY_FIELD, "beneficiary")
 
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.PayrollService')
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BillService')
     @patch('calcrule_timesheet.strategies.timesheet_base_strategy.BenefitConsumptionService')
     def test_individual_strategy_convert(self, mock_benefit_service, mock_bill_service, mock_payroll_service):
         """Test individual strategy conversion to bill and benefit"""
-        beneficiary = self.create_beneficiary_with_project()
+        beneficiary, enrollment = self.create_beneficiary_with_enrollment()
 
         entries_data = [
             {'day_number': 1, 'percent_complete': 100},
             {'day_number': 2, 'percent_complete': 50},
         ]
-        create_multiple_time_entries(beneficiary, entries_data, self.user.username)
+        create_multiple_time_entries(enrollment, entries_data, self.user.username)
 
         mock_bill_service.bill_create.return_value = {
             'success': True,
@@ -266,6 +274,7 @@ class IndividualTimesheetStrategyTest(TestCase):
 
         kwargs = {
             'beneficiary': beneficiary,
+            'enrollment': enrollment,
             'amount': 75.0,
             'user': self.user,
             'end_date': '2023-12-31',
@@ -299,28 +308,31 @@ class GroupTimesheetStrategyTest(TestCase):
         add_individual_to_group(cls.user.username, cls.individual, cls.group)
         cls.group_beneficiary_service = GroupBeneficiaryService(cls.user)
 
-    def create_group_beneficiary_with_project(self):
+    def create_group_beneficiary_with_enrollment(self):
         """Helper to create a group beneficiary enrolled in the project"""
         group_beneficiary_payload = {
             "group_id": self.group.id,
             "benefit_plan_id": self.benefit_plan.id,
             "status": BeneficiaryStatus.ACTIVE,
-            "project_id": self.project.id,
         }
         result = self.group_beneficiary_service.create(group_beneficiary_payload)
-        self.assertTrue(result.get('success', False))
+        self.assertTrue(result.get('success', False), result.get('detail', 'No details'))
         uuid = result.get('data', {}).get('uuid')
-        return GroupBeneficiary.objects.get(uuid=uuid)
+        group_beneficiary = GroupBeneficiary.objects.get(uuid=uuid)
+        enrollment = create_enrollment(group_beneficiary, self.project, self.user, is_group=True)
+        return enrollment
 
     def test_group_strategy_type(self):
         """Test that strategy has correct type"""
         self.assertEqual(GroupTimesheetStrategy.TYPE, "GROUP")
         self.assertEqual(GroupTimesheetStrategy.BENEFICIARY_TYPE, "group")
         self.assertEqual(GroupTimesheetStrategy.BENEFICIARY_OBJECT, GroupBeneficiary)
+        self.assertEqual(GroupTimesheetStrategy.ENROLLMENT_OBJECT, GroupBeneficiaryProjectEnrollment)
+        self.assertEqual(GroupTimesheetStrategy.BENEFICIARY_FIELD, "group_beneficiary")
 
     def test_group_timesheet_calculation(self):
         """Test calculation for group beneficiary"""
-        group_beneficiary = self.create_group_beneficiary_with_project()
+        enrollment = self.create_group_beneficiary_with_enrollment()
         base_day_rate = 100.0
 
         entries_data = [
@@ -329,14 +341,14 @@ class GroupTimesheetStrategyTest(TestCase):
             {'day_number': 3, 'percent_complete': 60},
         ]
         create_multiple_time_entries(
-            group_beneficiary,
+            enrollment,
             entries_data,
             self.user.username,
             is_group=True
         )
 
         payment = BaseTimesheetStrategy._calculate_timesheet_payment(
-            group_beneficiary, base_day_rate
+            enrollment, base_day_rate
         )
 
         expected = calculate_expected_payment(entries_data, base_day_rate)
