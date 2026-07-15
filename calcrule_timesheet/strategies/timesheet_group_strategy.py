@@ -1,4 +1,5 @@
-from social_protection.models import GroupBeneficiary, GroupBeneficiaryProjectEnrollment
+from social_protection.models import GroupBeneficiary
+from project_social_protection.models import GroupBeneficiaryProjectEnrollment
 
 from calcrule_timesheet.converters import (
     GroupToBillConverter,

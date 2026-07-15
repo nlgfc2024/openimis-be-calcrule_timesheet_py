@@ -26,6 +26,7 @@ setup(
         'openimis-be-invoice',
         'openimis-be-individual',
         'openimis-be-social_protection',
+        'openimis-be-project_social_protection',
         'openimis-be-payroll'
     ],
     classifiers=[

@@ -4,7 +4,8 @@ from django.contrib.contenttypes.models import ContentType
 from contribution_plan.services import PaymentPlan as PaymentPlanService
 from contribution_plan.models import PaymentPlan
 from core.test_helpers import LogInHelper
-from social_protection.models import Beneficiary, GroupBeneficiary, BeneficiaryStatus, ProjectStatus
+from social_protection.models import Beneficiary, GroupBeneficiary, BeneficiaryStatus
+from project_social_protection.models import ProjectStatus
 from social_protection.services import BeneficiaryService, GroupBeneficiaryService
 from social_protection.tests.test_helpers import (
     create_benefit_plan,

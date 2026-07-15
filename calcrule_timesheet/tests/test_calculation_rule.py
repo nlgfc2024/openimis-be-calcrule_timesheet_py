@@ -7,6 +7,8 @@ from contribution_plan.models import PaymentPlan
 from core.test_helpers import LogInHelper
 from social_protection.models import (
     BenefitPlan, Beneficiary, GroupBeneficiary, BeneficiaryStatus,
+)
+from project_social_protection.models import (
     BeneficiaryProjectEnrollment, GroupBeneficiaryProjectEnrollment,
 )
 from social_protection.services import BeneficiaryService, GroupBeneficiaryService

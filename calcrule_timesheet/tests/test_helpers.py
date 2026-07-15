@@ -1,5 +1,5 @@
 import copy
-from social_protection.models import (
+from project_social_protection.models import (
     BeneficiaryProjectTimeEntry,
     GroupBeneficiaryProjectTimeEntry,
     BeneficiaryProjectEnrollment,
