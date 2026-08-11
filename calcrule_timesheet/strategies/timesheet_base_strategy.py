@@ -78,11 +78,20 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         user = User.objects.filter(id=user_id).first()
 
         base_day_rate = float(payment_plan_parameters['calculation_rule']['base_day_rate'])
+        skip_zero = CalcruleTimesheetConfig.skip_zero_amount_benefits
+        skipped = 0
 
         for enrollment in enrollments:
             calculated_payment = cls._calculate_timesheet_payment(
                 enrollment, base_day_rate
             )
+
+            # Enrolment is not attendance: someone enrolled on a completed project who
+            # logged no time earns nothing. Billing them anyway inflates the participant
+            # count on the wage sheet and puts zero-value instructions in the PSP file.
+            if skip_zero and calculated_payment <= 0:
+                skipped += 1
+                continue
 
             beneficiary = getattr(enrollment, cls.BENEFICIARY_FIELD)
             additional_params = {
@@ -97,6 +106,12 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
             calculation.run_convert(
                 payment_plan,
                 **additional_params
+            )
+
+        if skipped:
+            logger.info(
+                "%s: skipped %s enrollment(s) with no time logged (zero amount).",
+                cls.__name__, skipped,
             )
         return "Calculation and transformation into bills completed successfully."
 

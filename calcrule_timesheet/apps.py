@@ -6,7 +6,12 @@ from calculation.apps import CALCULATION_RULES
 MODULE_NAME = 'calcrule_timesheet'
 DEFAULT_CFG = {
     'calculate_business_event': 'calcrule_timesheet.calculate',
-    'code_length': 8
+    'code_length': 8,
+    # Enrolment on a project does not mean work was logged, so most enrollments on a
+    # completed project typically compute to nothing. Emitting a zero bill + benefit for
+    # them inflates participant counts on the wage sheet and sends worthless payment
+    # instructions to the PSP. Set False to keep the old behaviour and bill everyone.
+    'skip_zero_amount_benefits': True,
 }
 
 
@@ -24,6 +29,9 @@ class CalcruleTimesheetConfig(AppConfig):
 
     calculate_business_event = None
     code_length = None
+    # Defaults to the DEFAULT_CFG value rather than None so the behaviour is correct even
+    # if the config never loads (__load_config only assigns fields declared here).
+    skip_zero_amount_benefits = True
 
     def ready(self):
         from core.models import ModuleConfiguration
