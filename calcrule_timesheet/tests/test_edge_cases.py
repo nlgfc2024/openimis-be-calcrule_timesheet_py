@@ -8,8 +8,8 @@ from social_protection.services import BeneficiaryService
 from social_protection.tests.test_helpers import (
     create_benefit_plan,
     create_individual,
-    create_project,
 )
+from project_social_protection.tests.test_helpers import create_project
 
 from calcrule_timesheet.strategies import BaseTimesheetStrategy
 from calcrule_timesheet.tests.test_helpers import (

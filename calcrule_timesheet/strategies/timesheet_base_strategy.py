@@ -24,15 +24,53 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         return calculation.uuid == str(payment_plan.calculation)
 
     @classmethod
+    def _resolve_enrollments(cls, payment_plan, **kwargs):
+        """
+        Work out which project enrollments this run should pay.
+
+        `enrollments_queryset` is an explicit override (tests, direct callers) and wins.
+        Otherwise start from every enrollment on a COMPLETED project of this benefit plan
+        and narrow it by `beneficiaries_queryset` - the kwarg PayrollService actually sends,
+        carrying the payroll's filter criteria (project_ids / location_ids / advanced
+        criteria) and its ACTIVE-beneficiary restriction. Without that narrowing a payroll
+        scoped to one project pays the whole phase.
+        """
+        enrollments = kwargs.get('enrollments_queryset', None)
+        # `is not None`, not truthiness: evaluating an empty queryset must stay empty
+        # rather than silently falling back to "everyone".
+        if enrollments is not None:
+            return enrollments
+
+        enrollments = cls.ENROLLMENT_OBJECT.objects.filter(
+            project__benefit_plan=payment_plan.benefit_plan,
+            project__status=ProjectStatus.COMPLETED,
+            is_deleted=False,
+        ).select_related('project', cls.BENEFICIARY_FIELD)
+
+        beneficiaries = kwargs.get('beneficiaries_queryset', None)
+        if beneficiaries is None:
+            return enrollments
+
+        # PayrollService._select_beneficiary_based_on_criteria always builds a
+        # social_protection.Beneficiary queryset, even for a GROUP benefit plan, so it can
+        # be the wrong model for this strategy's enrollment FK. Filtering on a mismatched
+        # model would quietly pay nobody; keep the unnarrowed set and say so instead.
+        if getattr(beneficiaries, 'model', None) is not cls.BENEFICIARY_OBJECT:
+            logger.warning(
+                "%s: ignoring beneficiaries_queryset of %s, expected %s - "
+                "payroll filter criteria will not be applied.",
+                cls.__name__,
+                getattr(beneficiaries, 'model', type(beneficiaries)).__name__,
+                cls.BENEFICIARY_OBJECT.__name__,
+            )
+            return enrollments
+
+        return enrollments.filter(**{f"{cls.BENEFICIARY_FIELD}__in": beneficiaries})
+
+    @classmethod
     def calculate(cls, calculation, payment_plan, **kwargs):
         payroll = kwargs.get('payroll', None)
-        enrollments = kwargs.get('enrollments_queryset', None)
-        if not enrollments:
-            enrollments = cls.ENROLLMENT_OBJECT.objects.filter(
-                project__benefit_plan=payment_plan.benefit_plan,
-                project__status=ProjectStatus.COMPLETED,
-                is_deleted=False,
-            ).select_related('project', cls.BENEFICIARY_FIELD)
+        enrollments = cls._resolve_enrollments(payment_plan, **kwargs)
 
         payment_plan_parameters = payment_plan.json_ext
         user_id, start_date, end_date, payment_cycle = \
