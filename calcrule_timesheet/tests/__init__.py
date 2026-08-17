@@ -6,8 +6,14 @@ from calcrule_timesheet.tests.test_calculation_rule import (
 )
 from calcrule_timesheet.tests.test_integration import TimesheetCalculationIntegrationTest
 from calcrule_timesheet.tests.test_edge_cases import TimesheetEdgeCaseTest
+from calcrule_timesheet.tests.test_enrollment_scoping import (
+    ResolveEnrollmentsTest,
+    SkipZeroAmountTest,
+)
 
 __all__ = [
+    'ResolveEnrollmentsTest',
+    'SkipZeroAmountTest',
     'TimesheetCalculationRuleTest',
     'BaseTimesheetStrategyTest',
     'IndividualTimesheetStrategyTest',

@@ -10,10 +10,10 @@ from social_protection.services import BeneficiaryService, GroupBeneficiaryServi
 from social_protection.tests.test_helpers import (
     create_benefit_plan,
     create_individual,
-    create_project,
     create_group,
     add_individual_to_group,
 )
+from project_social_protection.tests.test_helpers import create_project
 
 from calcrule_timesheet.calculation_rule import TimesheetCalculationRule
 from calcrule_timesheet.tests.test_helpers import (
