@@ -16,6 +16,10 @@ from calcrule_timesheet.strategies.timesheet_strategy_interface import Timesheet
 
 logger = logging.getLogger(__name__)
 
+# Project.project_type of a training session. Training attendance is paid by the
+# attendance-grant rule, never by this timesheet rule.
+TRAINING_PROJECT_TYPE = "TRAINING"
+
 
 class BaseTimesheetStrategy(TimesheetStrategyInterface):
 
@@ -34,18 +38,21 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
         carrying the payroll's filter criteria (project_ids / location_ids / advanced
         criteria) and its ACTIVE-beneficiary restriction. Without that narrowing a payroll
         scoped to one project pays the whole phase.
+
+        Enrollments on TRAINING projects are always left out, including from an explicit
+        override, so training attendance never becomes a timesheet payment.
         """
         enrollments = kwargs.get('enrollments_queryset', None)
         # `is not None`, not truthiness: evaluating an empty queryset must stay empty
         # rather than silently falling back to "everyone".
         if enrollments is not None:
-            return enrollments
+            return cls._exclude_training_sessions(enrollments)
 
-        enrollments = cls.ENROLLMENT_OBJECT.objects.filter(
+        enrollments = cls._exclude_training_sessions(cls.ENROLLMENT_OBJECT.objects.filter(
             project__benefit_plan=payment_plan.benefit_plan,
             project__status=ProjectStatus.COMPLETED,
             is_deleted=False,
-        ).select_related('project', cls.BENEFICIARY_FIELD)
+        )).select_related('project', cls.BENEFICIARY_FIELD)
 
         beneficiaries = kwargs.get('beneficiaries_queryset', None)
         if beneficiaries is None:
@@ -66,6 +73,10 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
             return enrollments
 
         return enrollments.filter(**{f"{cls.BENEFICIARY_FIELD}__in": beneficiaries})
+
+    @staticmethod
+    def _exclude_training_sessions(enrollments):
+        return enrollments.exclude(project__project_type=TRAINING_PROJECT_TYPE)
 
     @classmethod
     def calculate(cls, calculation, payment_plan, **kwargs):
