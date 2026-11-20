@@ -76,7 +76,17 @@ class BaseTimesheetStrategy(TimesheetStrategyInterface):
 
     @staticmethod
     def _exclude_training_sessions(enrollments):
+        # Project.project_type only exists once the project module's training support
+        # is migrated; before that every project is a WORK project, so filtering on it
+        # would fail the whole payroll instead of excluding nothing.
+        if not BaseTimesheetStrategy._projects_have_a_type(enrollments.model):
+            return enrollments
         return enrollments.exclude(project__project_type=TRAINING_PROJECT_TYPE)
+
+    @staticmethod
+    def _projects_have_a_type(enrollment_model):
+        project_model = enrollment_model._meta.get_field('project').related_model
+        return any(field.name == 'project_type' for field in project_model._meta.get_fields())
 
     @classmethod
     def calculate(cls, calculation, payment_plan, **kwargs):

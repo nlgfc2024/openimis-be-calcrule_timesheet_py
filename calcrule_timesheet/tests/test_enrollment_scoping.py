@@ -19,7 +19,7 @@ from project_social_protection.models import (
 )
 
 from calcrule_timesheet.apps import CalcruleTimesheetConfig
-from calcrule_timesheet.strategies.timesheet_base_strategy import TRAINING_PROJECT_TYPE
+from calcrule_timesheet.strategies.timesheet_base_strategy import BaseTimesheetStrategy, TRAINING_PROJECT_TYPE
 from calcrule_timesheet.strategies.timesheet_individual_strategy import IndividualTimesheetStrategy
 from calcrule_timesheet.strategies.timesheet_group_strategy import GroupTimesheetStrategy
 from calcrule_timesheet.tests.test_helpers import (
@@ -357,6 +357,14 @@ class TrainingSessionExclusionTest(TestCase):
             ),
         )
         self.assertEqual(converted, [])
+
+    def test_nothing_is_excluded_before_projects_have_a_type(self):
+        # Deployed before the project module's training support, Project has no
+        # project_type: every project is WORK, and the payroll must not fail.
+        self.assertTrue(BaseTimesheetStrategy._projects_have_a_type(BeneficiaryProjectEnrollment))
+        enrollments = BeneficiaryProjectEnrollment.objects.filter(pk=self.work_enrollment.pk)
+        with patch.object(BaseTimesheetStrategy, '_projects_have_a_type', return_value=False):
+            self.assertIs(BaseTimesheetStrategy._exclude_training_sessions(enrollments), enrollments)
 
     def test_group_strategy_skips_training_sessions(self):
         _, group, _ = create_group_with_individual(self.user.username, {'code': 'TRNSKIPG1'})
