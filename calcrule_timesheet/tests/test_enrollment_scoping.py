@@ -3,10 +3,12 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from core.test_helpers import LogInHelper
-from social_protection.models import Beneficiary, BeneficiaryStatus
-from social_protection.services import BeneficiaryService
+from social_protection.models import Beneficiary, BeneficiaryStatus, GroupBeneficiary
+from social_protection.services import BeneficiaryService, GroupBeneficiaryService
 from social_protection.tests.test_helpers import (
+    add_group_to_benefit_plan,
     create_benefit_plan,
+    create_group_with_individual,
     create_individual,
 )
 from project_social_protection.tests.test_helpers import create_project
@@ -17,6 +19,7 @@ from project_social_protection.models import (
 )
 
 from calcrule_timesheet.apps import CalcruleTimesheetConfig
+from calcrule_timesheet.strategies.timesheet_base_strategy import BaseTimesheetStrategy, TRAINING_PROJECT_TYPE
 from calcrule_timesheet.strategies.timesheet_individual_strategy import IndividualTimesheetStrategy
 from calcrule_timesheet.strategies.timesheet_group_strategy import GroupTimesheetStrategy
 from calcrule_timesheet.tests.test_helpers import (
@@ -226,3 +229,157 @@ class SkipZeroAmountTest(TestCase):
         with self.assertLogs(STRATEGY_LOGGER, level='INFO') as logs:
             self._run()
         self.assertIn('skipped 2 enrollment(s)', ' '.join(logs.output))
+
+
+class TrainingSessionExclusionTest(TestCase):
+    """
+    Training attendance is paid by the attendance-grant rule. Enrollments on TRAINING
+    projects must never reach this rule's conversion into Bills / BenefitConsumptions,
+    while WORK projects are paid as before.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.user = LogInHelper().get_or_create_user_api()
+        cls.benefit_plan = create_benefit_plan(
+            cls.user.username,
+            payload_override={'code': 'TRNSKIP', 'type': "INDIVIDUAL"},
+        )
+        cls.work_project = create_project(
+            'Completed work project',
+            cls.benefit_plan,
+            cls.user.username,
+            status=ProjectStatus.COMPLETED,
+        )
+        cls.training_session = create_project(
+            'Completed training session',
+            cls.benefit_plan,
+            cls.user.username,
+            status=ProjectStatus.COMPLETED,
+            project_type=TRAINING_PROJECT_TYPE,
+            allows_multiple_enrollments=True,
+        )
+        cls.group_benefit_plan = create_benefit_plan(
+            cls.user.username,
+            payload_override={'code': 'TRNSKIPG', 'type': "GROUP"},
+        )
+        cls.group_work_project = create_project(
+            'Completed group work project',
+            cls.group_benefit_plan,
+            cls.user.username,
+            status=ProjectStatus.COMPLETED,
+        )
+        cls.group_training_session = create_project(
+            'Completed group training session',
+            cls.group_benefit_plan,
+            cls.user.username,
+            status=ProjectStatus.COMPLETED,
+            project_type=TRAINING_PROJECT_TYPE,
+        )
+
+    def setUp(self):
+        super().setUp()
+        # The same participant attended both, every day in full.
+        beneficiary = self._beneficiary('TrainingSkip')
+        self.work_enrollment = create_enrollment(beneficiary, self.work_project, self.user)
+        self.training_enrollment = create_enrollment(
+            beneficiary, self.training_session, self.user
+        )
+        for enrollment in (self.work_enrollment, self.training_enrollment):
+            create_multiple_time_entries(
+                enrollment,
+                [{'day_number': day, 'percent_complete': 100} for day in (1, 2)],
+                self.user.username,
+            )
+
+    def _beneficiary(self, first_name):
+        individual = create_individual(
+            self.user.username, payload_override={'first_name': first_name}
+        )
+        result = BeneficiaryService(self.user).create({
+            "individual_id": individual.id,
+            "benefit_plan_id": self.benefit_plan.id,
+            "status": BeneficiaryStatus.ACTIVE,
+        })
+        self.assertTrue(result.get('success', False), result.get('detail', 'No details'))
+        return Beneficiary.objects.get(uuid=result['data']['uuid'])
+
+    @staticmethod
+    def _payment_plan_stub(benefit_plan):
+        class _PaymentPlan:
+            json_ext = {'calculation_rule': {'base_day_rate': '4000'}}
+
+        _PaymentPlan.benefit_plan = benefit_plan
+        return _PaymentPlan()
+
+    def _run(self, **kwargs):
+        """Run calculate with a stub calculation, returning the enrollments converted."""
+        converted = []
+
+        class _Calculation:
+            @staticmethod
+            def get_payment_cycle_parameters(**kwargs):
+                return None, None, None, None
+
+            @staticmethod
+            def run_convert(payment_plan, **kwargs):
+                converted.append((kwargs['enrollment'].pk, kwargs['amount']))
+
+        IndividualTimesheetStrategy.calculate(
+            _Calculation(), self._payment_plan_stub(self.benefit_plan), payroll=None, **kwargs
+        )
+        return converted
+
+    def test_only_work_attendance_is_converted_into_payments(self):
+        self.assertEqual(self._run(), [(self.work_enrollment.pk, 8000.0)])
+
+    def test_training_is_skipped_within_the_payroll_selection(self):
+        converted = self._run(
+            beneficiaries_queryset=Beneficiary.objects.filter(
+                pk=self.work_enrollment.beneficiary_id
+            ),
+        )
+        self.assertEqual(converted, [(self.work_enrollment.pk, 8000.0)])
+
+    def test_training_is_skipped_from_an_explicit_enrollments_queryset(self):
+        converted = self._run(
+            enrollments_queryset=BeneficiaryProjectEnrollment.objects.filter(
+                pk__in=[self.work_enrollment.pk, self.training_enrollment.pk]
+            ),
+        )
+        self.assertEqual(converted, [(self.work_enrollment.pk, 8000.0)])
+
+    def test_a_training_only_run_pays_nobody(self):
+        converted = self._run(
+            enrollments_queryset=BeneficiaryProjectEnrollment.objects.filter(
+                pk=self.training_enrollment.pk
+            ),
+        )
+        self.assertEqual(converted, [])
+
+    def test_nothing_is_excluded_before_projects_have_a_type(self):
+        # Deployed before the project module's training support, Project has no
+        # project_type: every project is WORK, and the payroll must not fail.
+        self.assertTrue(BaseTimesheetStrategy._projects_have_a_type(BeneficiaryProjectEnrollment))
+        enrollments = BeneficiaryProjectEnrollment.objects.filter(pk=self.work_enrollment.pk)
+        with patch.object(BaseTimesheetStrategy, '_projects_have_a_type', return_value=False):
+            self.assertIs(BaseTimesheetStrategy._exclude_training_sessions(enrollments), enrollments)
+
+    def test_group_strategy_skips_training_sessions(self):
+        _, group, _ = create_group_with_individual(self.user.username, {'code': 'TRNSKIPG1'})
+        group_beneficiary_id = add_group_to_benefit_plan(
+            GroupBeneficiaryService(self.user), group, self.group_benefit_plan,
+            {'status': BeneficiaryStatus.ACTIVE},
+        )
+        group_beneficiary = GroupBeneficiary.objects.get(id=group_beneficiary_id)
+        work_enrollment = create_enrollment(
+            group_beneficiary, self.group_work_project, self.user, is_group=True
+        )
+        create_enrollment(
+            group_beneficiary, self.group_training_session, self.user, is_group=True
+        )
+        resolved = GroupTimesheetStrategy._resolve_enrollments(
+            self._payment_plan_stub(self.group_benefit_plan),
+        )
+        self.assertEqual([e.pk for e in resolved], [work_enrollment.pk])
